@@ -1,0 +1,12 @@
+<aside id="sidebar" class="sidebar" aria-label="Navigation principale">
+<a href="{% url 'dashboard' %}" class="brand"><span class="brand-word">ORBIT<span class="brand-period">.</span></span><span>Orange MEA</span></a>
+<div class="workspace-label"><i class="ti ti-building-community" aria-hidden="true"></i><span>Expertise ICT / MPN<small>Espace collaboratif</small></span></div>
+<p class="nav-label">ESPACE DE TRAVAIL</p>
+<nav>{% for key,icon,label in navigation %}
+{% if key == 'reports' %}<p class="nav-label nav-divider">PILOTAGE</p>{% endif %}
+<a class="nav-link {% if section == key %}active{% endif %}" {% if section == key %}aria-current="page"{% endif %} href="{% url key %}"><i class="ti ti-{{ icon }}" aria-hidden="true"></i>{{ label }}</a>
+{% endfor %}</nav>
+<div class="sidebar-bottom"><a class="nav-link {% if section == 'notifications' %}active{% endif %}" href="{% url 'notifications' %}"><i class="ti ti-bell" aria-hidden="true"></i>Notifications{% if unread_count %}<span class="nav-count">{{ unread_count }}</span>{% endif %}</a>
+<div class="profile"><span class="avatar">{{ user.first_name|default:user.username|slice:":1"|upper }}</span><div><strong>{{ user.get_full_name|default:user.username }}</strong><small>{{ user.profile.subsidiary.name|default:"Orange MEA" }}</small><small>{{ user.profile.get_role_display|default:"Administrateur" }}</small></div></div>
+<form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="nav-link logout"><i class="ti ti-logout" aria-hidden="true"></i>Déconnexion</button></form></div>
+</aside><button class="drawer-backdrop" data-menu aria-label="Fermer le menu"></button>

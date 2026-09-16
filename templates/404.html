@@ -1,0 +1,1 @@
+{% extends 'base.html' %}{% block content %}<section class="panel">{% include 'components/empty_state.html' with icon="file-search" empty_title="Cette page est introuvable" empty_text="La ressource n’existe pas ou n’est pas accessible dans votre périmètre." %}<a class="button" href="{% url 'dashboard' %}">Retour au tableau de bord</a></section>{% endblock %}

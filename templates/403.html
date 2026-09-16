@@ -1,0 +1,1 @@
+{% extends 'base.html' %}{% block content %}<section class="panel">{% include 'components/empty_state.html' with icon="lock" empty_title="Cet espace est réservé" empty_text="Votre rôle ou votre filiale ne vous permet pas d’accéder à cette ressource." %}<a class="button" href="{% url 'dashboard' %}">Retour au tableau de bord</a></section>{% endblock %}
