@@ -3,6 +3,8 @@ from . import views
 urlpatterns=[
  path('',views.dashboard,name='dashboard'),
  path('experts/',views.expert_list,name='expert_list'),
+ path('experts/importer/',views.expert_import,name='expert_import'),
+ path('experts/importer/modele/',views.expert_import_template,name='expert_import_template'),
  path('matching/',views.matching,name='matching'),
  path('experts/nouveau/',views.expert_edit,name='expert_create'),
  path('experts/<int:pk>/',views.expert_detail,name='expert_detail'),
@@ -23,4 +25,3 @@ urlpatterns=[
  path('rapports/',views.reports,name='reports'),
  path('administration/',views.functional_admin,name='functional_admin'),
 ]
-

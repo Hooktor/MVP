@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% block content %}
+<a class="back-link" href="{% url 'expert_list' %}"><i class="ti ti-arrow-left" aria-hidden="true"></i>Référentiel experts</a>
+{% include 'components/page_header.html' with subtitle="Ajoutez plusieurs profils en une seule opération, dans votre périmètre autorisé." %}
+<div class="detail-grid">
+  <form method="post" enctype="multipart/form-data" class="panel form-panel">
+    {% csrf_token %}
+    <div class="section-header"><div><h2>Fichier d’import</h2><p>Format accepté : .xlsx, {{ max_rows }} lignes maximum, 2 Mo maximum.</p></div></div>
+    {% if upload_error %}<div class="alert error" role="alert">{{ upload_error }}</div>{% endif %}
+    <div class="field"><label for="expert-file">Classeur Excel</label><input class="input" id="expert-file" name="file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required></div>
+    <div class="form-actions"><a class="button" href="{% url 'expert_import_template' %}"><i class="ti ti-download" aria-hidden="true"></i>Télécharger le modèle</a><button class="button primary" data-once><i class="ti ti-file-import" aria-hidden="true"></i>Importer les experts</button></div>
+  </form>
+  <aside class="panel guidance"><i class="ti ti-shield-check" aria-hidden="true"></i><h2>Contrôles appliqués</h2><p>Les matricules sont uniques, les lignes invalides sont signalées et une filiale fournisseur ne peut importer que ses propres experts.</p><hr><p>Les référentiels absents (compétences, langues, certifications) sont créés à partir du fichier.</p><small>Les administrateurs fournisseurs importent des profils en brouillon ; OMEA peut conserver le statut renseigné.</small></aside>
+</div>
+{% if processed is not None %}<section class="panel" style="margin-top:24px"><div class="section-header"><div><p class="eyebrow">RÉSULTAT D’IMPORT</p><h2>{{ created|length }} créé{{ created|length|pluralize }} · {{ errors|length }} erreur{{ errors|length|pluralize }}</h2><p>{{ processed }} ligne{{ processed|pluralize }} traitée{{ processed|pluralize }}.</p></div></div>{% if created %}<div class="tags">{% for expert in created %}<a class="tag domain" href="{% url 'expert_detail' expert.pk %}">{{ expert.full_name }} · {{ expert.employee_id }}</a>{% endfor %}</div>{% endif %}{% if errors %}<div class="alert error" style="margin-top:18px"><strong>Lignes non importées</strong><ul>{% for error in errors %}<li>Ligne {{ error.line }} — {{ error.message }}</li>{% endfor %}</ul></div>{% endif %}</section>{% endif %}
+{% endblock %}

@@ -1,14 +1,19 @@
 from decimal import Decimal, InvalidOperation
-from datetime import timedelta, date
+from datetime import timedelta, date, datetime
+from pathlib import Path
+from zipfile import BadZipFile
+from openpyxl import load_workbook
+from openpyxl.utils.exceptions import InvalidFileException
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Q, Count, Avg, F
-from django.http import HttpResponse
+from django.http import HttpResponse, FileResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_POST
 from .models import *
 from .forms import ExpertForm, ExpertRequestForm
@@ -114,6 +119,110 @@ def expert_edit(request,pk=None):
         messages.success(request,'Le profil expert a été enregistré.')
         return redirect('expert_detail',obj.pk)
     return render(request,'form.html',{'form':form,'title':'Modifier le profil' if pk else 'Nouvel expert','section':'expert_list','back_url':'expert_list'})
+
+IMPORT_HEADERS = ['Matricule *','Prénom *','Nom *','Fonction *','Code filiale','Domaines','Compétences','Certifications','Verticales','Langues (Nom:Niveau)','TJM','Devise','Disponibilité','Date disponibilité','Présentation','Statut validation']
+IMPORT_TEMPLATE = Path(__file__).resolve().parent.parent / 'static' / 'downloads' / 'modele_import_experts_orbit.xlsx'
+
+def import_values(value):
+    return [part.strip() for part in str(value or '').split(',') if part and str(part).strip()]
+
+def import_date(value):
+    if isinstance(value, datetime): return value.date()
+    if isinstance(value, date): return value
+    parsed=parse_date(str(value or '').strip())
+    if value and not parsed: raise ValueError('La date de disponibilité est invalide (format AAAA-MM-JJ attendu).')
+    return parsed
+
+def import_expert_row(values, user, line, seen_ids):
+    values=[value.strip() if isinstance(value,str) else value for value in values]
+    employee_id, first_name, last_name, job_title=[str(value or '').strip() for value in values[:4]]
+    if not all((employee_id,first_name,last_name,job_title)):
+        raise ValueError('Matricule, prénom, nom et fonction sont obligatoires.')
+    if employee_id in seen_ids or Expert.objects.filter(employee_id=employee_id).exists():
+        raise ValueError(f'Le matricule « {employee_id} » existe déjà.')
+    requested_code=str(values[4] or '').strip().upper()
+    user_subsidiary_id=subsidiary_id(user)
+    if role(user)=='ADMIN_FOURNISSEUR':
+        if not user_subsidiary_id: raise ValueError('Votre compte ne possède pas de filiale de rattachement.')
+        subsidiary=Subsidiary.objects.get(pk=user_subsidiary_id)
+        if requested_code and requested_code != subsidiary.code.upper():
+            raise ValueError('Le code filiale ne correspond pas à votre périmètre.')
+    else:
+        if not requested_code: raise ValueError('Le code filiale est obligatoire pour un import OMEA.')
+        subsidiary=Subsidiary.objects.filter(code__iexact=requested_code).first()
+        if not subsidiary: raise ValueError(f'La filiale « {requested_code} » est inconnue.')
+    availability=str(values[12] or 'AVAILABLE').strip().upper()
+    if availability not in dict(Expert.AVAILABILITY): raise ValueError('La disponibilité est invalide.')
+    validation_status=str(values[15] or 'DRAFT').strip().upper()
+    if validation_status not in dict(Expert.VALIDATION): raise ValueError('Le statut de validation est invalide.')
+    if role(user)!='ADMIN_OMEA': validation_status='DRAFT'
+    try:
+        daily_rate=Decimal(str(values[10]).replace(',','.')) if values[10] else Decimal('0')
+    except InvalidOperation: raise ValueError('Le TJM doit être un nombre valide.')
+    if not daily_rate.is_finite() or daily_rate<0: raise ValueError('Le TJM doit être positif ou nul.')
+    currency=str(values[11] or 'EUR').strip().upper()
+    if len(currency)!=3 or not currency.isalpha(): raise ValueError('La devise doit être un code de trois lettres.')
+    available_from=import_date(values[13])
+    bio=str(values[14] or '').strip()
+    if len(bio)>2000: raise ValueError('La présentation dépasse 2 000 caractères.')
+    domains=[]
+    for name in import_values(values[5]):
+        domain,_=ExpertiseDomain.objects.get_or_create(name=name); domains.append(domain)
+    skills=[]
+    for name in import_values(values[6]):
+        if not domains: raise ValueError('Ajoutez au moins un domaine avant d’importer des compétences.')
+        skill,_=Skill.objects.get_or_create(name=name,defaults={'domain':domains[0]}); skills.append(skill)
+    certifications=[Certification.objects.get_or_create(name=name)[0] for name in import_values(values[7])]
+    verticals=[BusinessVertical.objects.get_or_create(name=name)[0] for name in import_values(values[8])]
+    languages=[]
+    for item in import_values(values[9]):
+        if ':' not in item: raise ValueError('Chaque langue doit avoir le format « Langue:Niveau ».')
+        name, level=(part.strip() for part in item.rsplit(':',1)); level=level.upper()
+        if not name or level not in dict(ExpertLanguageAssignment.LEVELS): raise ValueError('Une langue ou son niveau est invalide.')
+        languages.append((Language.objects.get_or_create(name=name)[0],level))
+    expert=Expert.objects.create(first_name=first_name,last_name=last_name,employee_id=employee_id,job_title=job_title,subsidiary=subsidiary,daily_rate=daily_rate,currency=currency,availability=availability,validation_status=validation_status,available_from=available_from,bio=bio)
+    expert.domains.set(domains); expert.skills.set(skills); expert.certifications.set(certifications); expert.verticals.set(verticals)
+    ExpertLanguageAssignment.objects.bulk_create([ExpertLanguageAssignment(expert=expert,language=language,level=level) for language,level in languages])
+    audit(user,'EXPERT_IMPORTED',expert,'Expert importé depuis Excel',metadata={'line':line})
+    seen_ids.add(employee_id)
+    return expert
+
+@login_required
+def expert_import_template(request):
+    guard(request.user,['ADMIN_FOURNISSEUR','ADMIN_OMEA'])
+    if not IMPORT_TEMPLATE.exists(): raise PermissionDenied
+    return FileResponse(IMPORT_TEMPLATE.open('rb'),as_attachment=True,filename='modele_import_experts_orbit.xlsx')
+
+@login_required
+def expert_import(request):
+    guard(request.user,['ADMIN_FOURNISSEUR','ADMIN_OMEA'])
+    context={'title':'Importer des experts','section':'expert_list','max_rows':500}
+    if request.method!='POST': return render(request,'expert_import.html',context)
+    upload=request.FILES.get('file')
+    if not upload:
+        context['upload_error']='Sélectionnez un fichier Excel .xlsx.'; return render(request,'expert_import.html',context)
+    if not upload.name.lower().endswith('.xlsx') or upload.size>2*1024*1024:
+        context['upload_error']='Le fichier doit être un .xlsx de 2 Mo maximum.'; return render(request,'expert_import.html',context)
+    try:
+        workbook=load_workbook(upload,read_only=True,data_only=True)
+        if 'Experts' not in workbook.sheetnames: raise ValueError('La feuille « Experts » est introuvable.')
+        sheet=workbook['Experts']; headers=[str(cell or '').strip() for cell in next(sheet.iter_rows(min_row=4,max_row=4,values_only=True))]
+        if headers[:len(IMPORT_HEADERS)] != IMPORT_HEADERS: raise ValueError('Les en-têtes ne correspondent pas au modèle ORBIT.')
+    except (InvalidFileException,BadZipFile,OSError,ValueError,StopIteration) as error:
+        context['upload_error']=str(error) or 'Le fichier Excel est illisible.'; return render(request,'expert_import.html',context)
+    rows=list(sheet.iter_rows(min_row=5,values_only=True))
+    if len(rows)>context['max_rows']:
+        context['upload_error']=f'Le fichier dépasse la limite de {context["max_rows"]} lignes.'; return render(request,'expert_import.html',context)
+    created=[]; errors=[]; seen_ids=set()
+    for line,row in enumerate(rows,start=5):
+        values=list(row[:len(IMPORT_HEADERS)])
+        if not any(value not in (None,'') for value in values): continue
+        try:
+            with transaction.atomic(): created.append(import_expert_row(values,request.user,line,seen_ids))
+        except ValueError as error: errors.append({'line':line,'message':str(error)})
+    context.update(created=created,errors=errors,processed=len(created)+len(errors))
+    if created: messages.success(request,f'{len(created)} expert(s) importé(s).')
+    return render(request,'expert_import.html',context)
 
 @login_required
 def request_list(request):
