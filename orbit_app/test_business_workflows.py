@@ -1,10 +1,11 @@
 from datetime import timedelta
 from django.test import TestCase
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.contrib.auth.models import User
 from django.urls import reverse
 from django.utils import timezone
 from .models import *
-from .services import create_evaluation, process_timeouts, submit_request
+from .services import create_evaluation, process_timeouts, register_delivery_report, register_purchase_order, submit_request
 
 class BusinessWorkflowHttpTests(TestCase):
     def setUp(self):
@@ -83,6 +84,30 @@ class BusinessWorkflowHttpTests(TestCase):
         self.assertEqual(process_timeouts(),0)
         solicitation.refresh_from_db(); request.refresh_from_db(); self.expert.refresh_from_db()
         self.assertEqual(solicitation.status,'ESCALATED'); self.assertEqual(request.status,'WAITING_MATCHING'); self.assertEqual(self.expert.availability,'AVAILABLE')
+
+    def test_requester_uploads_a_pdf_po_and_mission_is_planned(self):
+        request=self.create_request(); submit_request(request,self.requester)
+        self.client.force_login(self.admin)
+        self.client.post(reverse('solicitation_create',args=[self.expert.pk]),{'request_id':request.pk})
+        solicitation=ExpertSolicitation.objects.get(request=request)
+        from .services import accept_solicitation
+        accept_solicitation(solicitation,self.supplier)
+        po=SimpleUploadedFile('PO-ORBIT.pdf',b'%PDF-1.4 bon de commande',content_type='application/pdf')
+        mission=register_purchase_order(request,po,self.requester)
+        request.refresh_from_db(); self.expert.refresh_from_db()
+        self.assertEqual(request.status,'IN_PROGRESS'); self.assertEqual(mission.po_document.document_type,'PO')
+        self.assertEqual(self.expert.availability,'ON_MISSION')
+
+    def test_supplier_uploads_a_pdf_pv_and_request_moves_to_evaluation(self):
+        request=self.create_request(); submit_request(request,self.requester)
+        self.client.force_login(self.admin); self.client.post(reverse('solicitation_create',args=[self.expert.pk]),{'request_id':request.pk})
+        solicitation=ExpertSolicitation.objects.get(request=request)
+        from .services import accept_solicitation
+        accept_solicitation(solicitation,self.supplier)
+        mission=register_purchase_order(request,SimpleUploadedFile('PO.pdf',b'%PDF-1.4',content_type='application/pdf'),self.requester)
+        register_delivery_report(mission,SimpleUploadedFile('PV.pdf',b'%PDF-1.4',content_type='application/pdf'),self.supplier)
+        mission.refresh_from_db(); request.refresh_from_db()
+        self.assertEqual(mission.pv_document.document_type,'PV'); self.assertEqual(request.status,'WAITING_EVALUATION')
 
     def test_evaluation_closes_mission_and_recalculates_score(self):
         request=self.create_request(); request.status='WAITING_EVALUATION'; request.save(update_fields=['status'])

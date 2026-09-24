@@ -52,9 +52,16 @@ class EnterpriseInterfaceTests(TestCase):
     def test_foreign_requests_and_write_roles(self):
         self.client.force_login(self.users['ADMIN_DEMANDEUR'])
         self.assertEqual(self.client.get(reverse('request_detail',args=[self.hidden.pk])).status_code,404)
-        self.assertEqual(self.client.get(reverse('expert_create')).status_code,403)
+        self.assertEqual(self.client.get(reverse('expert_create')).status_code,200)
         self.client.force_login(self.users['ADMIN_FOURNISSEUR'])
-        self.assertEqual(self.client.get(reverse('request_create')).status_code,403)
+        self.assertEqual(self.client.get(reverse('request_create')).status_code,200)
+
+    def test_omea_can_approve_a_draft_expert_from_the_application(self):
+        draft=Expert.objects.create(first_name='Draft',last_name='Expert',employee_id='QA-DRAFT',job_title='Architecte',subsidiary=self.other,validation_status='DRAFT',availability='AVAILABLE')
+        self.client.force_login(self.users['ADMIN_OMEA'])
+        response=self.client.post(reverse('expert_approve',args=[draft.pk]))
+        self.assertRedirects(response,reverse('expert_detail',args=[draft.pk]))
+        draft.refresh_from_db(); self.assertEqual(draft.validation_status,'APPROVED')
 
     def test_read_notification_is_post_and_owned(self):
         n=Notification.objects.create(user=self.users['DEMANDEUR'],title='Test',message='Test')
@@ -65,6 +72,13 @@ class EnterpriseInterfaceTests(TestCase):
         n.refresh_from_db(); self.assertTrue(n.is_read)
         self.client.force_login(self.users['ADMIN_DEMANDEUR'])
         self.assertEqual(self.client.post(url).status_code,404)
+
+    def test_notification_with_an_outdated_target_returns_to_notifications(self):
+        n=Notification.objects.create(user=self.users['ADMIN_DEMANDEUR'],title='Ancienne demande',message='La demande a changé d’étape.',url=f'/demandes/{self.hidden.pk}/')
+        self.client.force_login(self.users['ADMIN_DEMANDEUR'])
+        response=self.client.get(reverse('notification_open',args=[n.pk]))
+        self.assertRedirects(response,reverse('notifications'))
+        n.refresh_from_db(); self.assertTrue(n.is_read)
 
     def test_csrf_enforced_and_closed_request_not_editable(self):
         c=Client(enforce_csrf_checks=True); c.force_login(self.users['ADMIN_DEMANDEUR'])
@@ -83,4 +97,3 @@ class EnterpriseInterfaceTests(TestCase):
 
     def test_login_is_custom(self):
         self.assertContains(self.client.get(reverse('login')),'L’expertise se partage')
-

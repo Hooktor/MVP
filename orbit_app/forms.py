@@ -10,6 +10,7 @@ LABELS = {
  'domain':'Domaine d’expertise','required_skills':'Compétences recherchées','required_language':'Langue requise',
  'min_language_level':'Niveau linguistique minimum','max_daily_rate':'TJM maximum','desired_start':'Date de démarrage souhaitée',
  'duration_days':'Durée en jours','rating':'Note sur 5','comment':'Commentaire',
+ 'mode':'Mode de recherche','target_expert':'Expert à solliciter directement',
 }
 class StyledForm(forms.ModelForm):
     def __init__(self,*args,user=None,**kwargs):
@@ -30,7 +31,23 @@ class ExpertForm(StyledForm):
 class ExpertRequestForm(StyledForm):
     class Meta:
         model=ExpertRequest
-        fields=['title','description','subsidiary','domain','required_skills','required_language','min_language_level','max_daily_rate','desired_start','duration_days']
+        fields=['mode','target_expert','title','description','subsidiary','domain','required_skills','required_language','min_language_level','max_daily_rate','desired_start','duration_days']
+    def __init__(self,*args,user=None,**kwargs):
+        super().__init__(*args,user=user,**kwargs)
+        self.fields['mode'].widget=forms.RadioSelect()
+        self.fields['mode'].required=False
+        self.fields['mode'].initial=self.instance.mode if self.instance.pk else 'BROADCAST'
+        self.fields['mode'].help_text='Diffusez votre besoin ou ciblez directement un expert du référentiel.'
+        self.fields['target_expert'].queryset=Expert.objects.filter(is_active=True,validation_status='APPROVED',availability='AVAILABLE').select_related('subsidiary').order_by('last_name','first_name')
+        self.fields['target_expert'].required=False
+        self.fields['target_expert'].help_text='Requis uniquement pour une sollicitation directe.'
+    def clean(self):
+        cleaned=super().clean()
+        mode=cleaned.get('mode') or 'BROADCAST'
+        cleaned['mode']=mode
+        if mode=='DIRECT' and not cleaned.get('target_expert'):
+            self.add_error('target_expert','Choisissez l’expert à solliciter directement.')
+        if mode=='BROADCAST': cleaned['target_expert']=None
+        return cleaned
 class EvaluationForm(StyledForm):
     class Meta: model=Evaluation; fields=['rating','comment']
-

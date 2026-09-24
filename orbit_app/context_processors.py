@@ -14,7 +14,7 @@ def orbit_context(request):
     ]
     if r == 'ADMIN_OMEA': nav.append(('functional_admin','settings','Administration'))
     return {'navigation': nav, 'business_role': r,
-            'can_request': r in ('DEMANDEUR','ADMIN_DEMANDEUR','ADMIN_OMEA'),
-            'can_expert': r in ('ADMIN_FOURNISSEUR','ADMIN_OMEA'),
+            'can_request': r in ('ADMIN_FILIALE','ADMIN_OMEA'),
+            'can_expert': r in ('ADMIN_FILIALE','ADMIN_OMEA'),
+            'can_solicit': r in ('ADMIN_FILIALE','ADMIN_OMEA'),
             'unread_count': request.user.notifications.filter(is_read=False).count()}
-

@@ -17,9 +17,7 @@ ORBIT est une application Django interne de pilotage de l'expertise Orange Middl
 
 | Rôle | Responsabilités principales |
 | --- | --- |
-| Demandeur | Crée ses demandes, suit les sollicitations associées et évalue ses missions. |
-| Administrateur demandeur | Gère les demandes de sa filiale et lance les sollicitations. |
-| Administrateur fournisseur | Gère les experts de sa filiale et répond aux pré-accords. |
+| Administrateur de filiale | Crée les demandes de sa filiale, gère ses experts, sollicite d’autres filiales et répond aux pré-accords reçus. |
 | Administrateur OMEA | Dispose d'une vue transverse, valide les profils et consulte l'administration. |
 
 ## Workflow d'une demande
@@ -55,19 +53,20 @@ Après `seed_demo_data`, les comptes suivants sont disponibles. Le mot de passe 
 
 | Compte | Rôle |
 | --- | --- |
-| `demo.demandeur` | Administrateur demandeur |
-| `demo.fournisseur` | Administrateur fournisseur |
+| `demo.demandeur` | Administrateur de filiale |
+| `demo.fournisseur` | Administrateur de filiale |
+| `demo.ci` | Administrateur de filiale en Côte d’Ivoire |
 | `demo.omea` | Administrateur OMEA |
 
 ## Importer des experts depuis Excel
 
-1. Se connecter comme administrateur fournisseur ou OMEA.
+1. Se connecter comme administrateur de filiale ou OMEA.
 2. Ouvrir **Experts**, puis **Importer depuis Excel**.
 3. Télécharger le modèle, renseigner les lignes, puis importer le fichier `.xlsx`.
 
 Le fichier accepte au plus 500 lignes et 2 Mo. Les champs obligatoires sont le matricule, le prénom, le nom et la fonction. Les listes (domaines, compétences, certifications et verticales) sont séparées par des virgules. Les langues utilisent le format `Langue:Niveau`, par exemple `Français:C1, Anglais:B2`.
 
-Un administrateur fournisseur ne peut importer que dans sa filiale et les profils sont créés au statut brouillon. OMEA peut choisir le statut de validation. Les lignes non valides sont signalées sans annuler les autres lignes correctes.
+Un administrateur de filiale ne peut importer que dans sa filiale et les profils sont créés au statut brouillon. OMEA peut choisir le statut de validation. Les lignes non valides sont signalées sans annuler les autres lignes correctes.
 
 ## Administration des filiales
 

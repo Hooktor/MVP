@@ -9,6 +9,7 @@ class Command(BaseCommand):
             hours=(now-s.created_at).total_seconds()/3600 if hasattr(s,'created_at') else 0
             key='24' if hours>=24 else '0'
             if key not in s.reminders_sent:
-                profile=s.expert.subsidiary.profiles.filter(role='ADMIN_FOURNISSEUR').first()
-                if profile: Notification.objects.create(user=profile.user,title='Rappel de sollicitation',message=s.request.reference); s.reminders_sent[key]=now.isoformat(); s.save(update_fields=['reminders_sent']); count+=1
+                profiles=s.expert.subsidiary.profiles.filter(role__in=['ADMIN_FILIALE','ADMIN_FOURNISSEUR','ADMIN_DEMANDEUR','DEMANDEUR'])
+                for profile in profiles: Notification.objects.create(user=profile.user,title='Rappel de sollicitation',message=s.request.reference); count+=1
+                if profiles.exists(): s.reminders_sent[key]=now.isoformat(); s.save(update_fields=['reminders_sent'])
         self.stdout.write(f'{count} rappel(s) envoyé(s).')

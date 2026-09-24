@@ -16,10 +16,9 @@ class ExpertImportTests(TestCase):
         self.other=Subsidiary.objects.create(name='Import Mali',code='MAL',cluster=cluster)
         self.supplier=User.objects.create_user('import-supplier',password='x')
         self.omea=User.objects.create_user('import-omea',password='x')
-        self.requester=User.objects.create_user('import-requester',password='x')
+        self.outsider=User.objects.create_user('import-outsider',password='x')
         Profile.objects.create(user=self.supplier,role='ADMIN_FOURNISSEUR',subsidiary=self.sub)
         Profile.objects.create(user=self.omea,role='ADMIN_OMEA',subsidiary=self.sub)
-        Profile.objects.create(user=self.requester,role='DEMANDEUR',subsidiary=self.sub)
 
     def workbook_file(self, rows):
         workbook=Workbook(); sheet=workbook.active; sheet.title='Experts'
@@ -52,7 +51,7 @@ class ExpertImportTests(TestCase):
         self.assertContains(response,'2 erreur')
 
     def test_import_permission_template_and_invalid_file_are_checked(self):
-        self.client.force_login(self.requester)
+        self.client.force_login(self.outsider)
         self.assertEqual(self.client.get(reverse('expert_import')).status_code,403)
         self.client.force_login(self.omea)
         self.assertEqual(self.client.get(reverse('expert_import_template')).status_code,200)

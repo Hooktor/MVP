@@ -12,13 +12,14 @@ from django.db import transaction
 from django.db.models import Q, Count, Avg, F
 from django.http import HttpResponse, FileResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import resolve, Resolver404
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_POST
 from .models import *
-from .forms import ExpertForm, ExpertRequestForm
+from .forms import ExpertForm, ExpertRequestForm, EvaluationForm
 from .selectors import *
-from .services import submit_request, create_solicitation, accept_solicitation, refuse_solicitation, audit
+from .services import submit_request, create_solicitation, create_direct_solicitation, create_broadcast_proposal, register_purchase_order, register_delivery_report, create_evaluation, accept_solicitation, refuse_solicitation, audit
 
 def listing(request, qs, template, partial, **ctx):
     page = Paginator(qs, 12).get_page(request.GET.get('page'))
@@ -31,7 +32,7 @@ def guard(user, roles):
     if role(user) not in roles: raise PermissionDenied
 
 def request_writable(user,obj):
-    return role(user) == 'ADMIN_OMEA' or (role(user) in ('DEMANDEUR','ADMIN_DEMANDEUR') and obj.subsidiary_id==subsidiary_id(user) and (role(user)=='ADMIN_DEMANDEUR' or obj.requester_id==user.id))
+    return role(user) == 'ADMIN_OMEA' or (role(user)=='ADMIN_FILIALE' and obj.subsidiary_id==subsidiary_id(user))
 
 def with_deadline(s):
     remaining=(s.deadline-timezone.now()).total_seconds()
@@ -51,9 +52,28 @@ def dashboard(request):
       ('Experts disponibles',experts.filter(availability='AVAILABLE',validation_status='APPROVED',is_active=True).count(),'Validés par OMEA','users','matching'),
       ('Missions en cours',missions.filter(status='IN_PROGRESS').count(),'Mobilisations actives','briefcase','mission_list')]
     pipeline=[('Matching',counts.get('WAITING_MATCHING',0),'blue'),('Pré-accord',counts.get('WAITING_PRE_AGREEMENT',0),'orange'),('PO attendu',counts.get('WAITING_PO',0),'orange'),('Mission',counts.get('IN_PROGRESS',0),'blue'),('Clôturées',counts.get('CLOSED',0),'green')]
+    actions=[]
+    def add_action(kind, icon, title, detail, subsidiary, due, url, pk, action, tone, progress, progress_label):
+        actions.append({'kind':kind,'icon':icon,'title':title,'detail':detail,'subsidiary':subsidiary,'due':due,
+          'url':url,'pk':pk,'action':action,'tone':tone,'progress':progress,'progress_label':progress_label})
+    for expert_request in reqs.filter(status='DRAFT',requester=request.user).order_by('-created_at'):
+        add_action('Demande','file-alt','Finaliser la demande',expert_request.reference,expert_request.subsidiary.name,'Brouillon','request_detail',expert_request.pk,'Ouvrir','blue',20,'1/5')
+    for expert_request in reqs.filter(status='WAITING_MATCHING',requester=request.user).order_by('-created_at'):
+        add_action('Demande','search','Suivre les propositions',expert_request.reference,expert_request.subsidiary.name,'Recherche en cours','request_detail',expert_request.pk,'Voir','blue',40,'2/5')
+    for solicitation in sols.filter(status='PENDING').select_related('request','expert__subsidiary').order_by('deadline'):
+        if role(request.user)=='ADMIN_FILIALE' and solicitation.expert.subsidiary_id==subsidiary_id(request.user):
+            detail=f'{solicitation.request.reference} · {solicitation.expert.full_name}' if solicitation.request_id else f'{solicitation.subject} · {solicitation.expert.full_name}'
+            kind='Pré-accord' if solicitation.request_id else 'Sollicitation directe'
+            add_action(kind,'paper-plane','Répondre à la sollicitation',detail,solicitation.expert.subsidiary.name,with_deadline(solicitation).remaining,'solicitation_detail',solicitation.pk,'Répondre','mint',50,'2/4')
+    for expert_request in reqs.filter(status='WAITING_PO',requester=request.user).order_by('created_at'):
+        add_action('Bon de commande','file-invoice','Ajouter le bon de commande',expert_request.reference,expert_request.subsidiary.name,'PO attendu','request_detail',expert_request.pk,'Ajouter le PO','peach',60,'3/5')
+    for mission in missions.filter(request__status='IN_PROGRESS').order_by('-start_date'):
+        add_action('Procès-verbal','file-signature','Préparer le procès-verbal',mission.request.reference,mission.supplier_subsidiary.name,'Mission en cours','mission_detail',mission.pk,'Ouvrir','lavender',80,'4/5')
+    for mission in missions.filter(request__status='WAITING_EVALUATION',request__requester=request.user).order_by('planned_end_date'):
+        add_action('Évaluation','star','Évaluer la mission',f'{mission.request.reference} · {mission.expert.full_name}',mission.request.subsidiary.name,'PV reçu','mission_detail',mission.pk,'Évaluer','peach',90,'4/5')
     return render(request,'dashboard.html',{'title':'Vue d’ensemble','section':'dashboard','metrics':metrics,'pipeline':pipeline,
       'recent_requests':reqs.order_by('-created_at')[:5],'pending': [with_deadline(s) for s in sols.filter(status='PENDING').order_by('deadline')[:4]],
-      'events':audit_for(request.user)[:5], 'available':experts.filter(availability='AVAILABLE',validation_status='APPROVED')[:3]})
+      'events':audit_for(request.user)[:5], 'available':experts.filter(availability='AVAILABLE',validation_status='APPROVED')[:3],'action_items':actions[:8]})
 
 def expert_filters(request,qs):
     q=request.GET.get('q','').strip()
@@ -99,18 +119,32 @@ def matching(request):
 @login_required
 def expert_detail(request,pk):
     qs=experts_for(request.user)
-    if role(request.user) in ('DEMANDEUR','ADMIN_DEMANDEUR'):
+    if role(request.user)=='ADMIN_FILIALE':
         qs=Expert.objects.filter(Q(subsidiary_id=subsidiary_id(request.user))|Q(is_active=True,validation_status='APPROVED')).select_related('subsidiary').prefetch_related('skills','domains','certifications','verticals')
     obj=get_object_or_404(qs,pk=pk)
     return render(request,'expert_detail.html',{'expert':obj,'title':obj.full_name,'section':'expert_list',
-      'can_edit':role(request.user)=='ADMIN_OMEA' or (role(request.user)=='ADMIN_FOURNISSEUR' and obj.subsidiary_id==subsidiary_id(request.user)),
+      'can_edit':role(request.user)=='ADMIN_OMEA' or (role(request.user)=='ADMIN_FILIALE' and obj.subsidiary_id==subsidiary_id(request.user)),
+      'can_approve':role(request.user)=='ADMIN_OMEA' and obj.validation_status=='DRAFT',
       'languages':obj.expertlanguageassignment_set.select_related('language'),'references':obj.references.all(),
       'missions':missions_for(request.user).filter(expert=obj),'evaluations':Evaluation.objects.filter(mission__in=missions_for(request.user),mission__expert=obj).select_related('evaluator'),
       'events':audit_for(request.user).filter(entity_type='Expert',entity_id=str(obj.pk))})
 
 @login_required
+@require_POST
+def expert_approve(request,pk):
+    guard(request.user,['ADMIN_OMEA'])
+    expert=get_object_or_404(Expert,pk=pk)
+    if expert.validation_status!='DRAFT':
+        messages.info(request,'Cet expert a déjà été traité.')
+    else:
+        expert.validation_status='APPROVED'; expert.save(update_fields=['validation_status'])
+        audit(request.user,'APPROVE_EXPERT',expert,'Expert approuvé et disponible pour le matching',old='DRAFT',new='APPROVED')
+        messages.success(request,f'{expert.full_name} est approuvé et peut maintenant être sollicité.')
+    return redirect('expert_detail',pk)
+
+@login_required
 def expert_edit(request,pk=None):
-    guard(request.user,['ADMIN_FOURNISSEUR','ADMIN_OMEA'])
+    guard(request.user,['ADMIN_FILIALE','ADMIN_OMEA'])
     obj=get_object_or_404(experts_for(request.user),pk=pk) if pk else None
     form=ExpertForm(request.POST or None,instance=obj,user=request.user)
     if request.method=='POST' and form.is_valid():
@@ -142,7 +176,7 @@ def import_expert_row(values, user, line, seen_ids):
         raise ValueError(f'Le matricule « {employee_id} » existe déjà.')
     requested_code=str(values[4] or '').strip().upper()
     user_subsidiary_id=subsidiary_id(user)
-    if role(user)=='ADMIN_FOURNISSEUR':
+    if role(user)=='ADMIN_FILIALE':
         if not user_subsidiary_id: raise ValueError('Votre compte ne possède pas de filiale de rattachement.')
         subsidiary=Subsidiary.objects.get(pk=user_subsidiary_id)
         if requested_code and requested_code != subsidiary.code.upper():
@@ -189,13 +223,13 @@ def import_expert_row(values, user, line, seen_ids):
 
 @login_required
 def expert_import_template(request):
-    guard(request.user,['ADMIN_FOURNISSEUR','ADMIN_OMEA'])
+    guard(request.user,['ADMIN_FILIALE','ADMIN_OMEA'])
     if not IMPORT_TEMPLATE.exists(): raise PermissionDenied
     return FileResponse(IMPORT_TEMPLATE.open('rb'),as_attachment=True,filename='modele_import_experts_orbit.xlsx')
 
 @login_required
 def expert_import(request):
-    guard(request.user,['ADMIN_FOURNISSEUR','ADMIN_OMEA'])
+    guard(request.user,['ADMIN_FILIALE','ADMIN_OMEA'])
     context={'title':'Importer des experts','section':'expert_list','max_rows':500}
     if request.method!='POST': return render(request,'expert_import.html',context)
     upload=request.FILES.get('file')
@@ -235,13 +269,13 @@ def request_list(request):
 
 @login_required
 def request_edit(request,pk=None):
-    guard(request.user,['DEMANDEUR','ADMIN_DEMANDEUR','ADMIN_OMEA'])
+    guard(request.user,['ADMIN_FILIALE','ADMIN_OMEA'])
     obj=get_object_or_404(requests_for(request.user),pk=pk) if pk else None
     if obj and (not request_writable(request.user,obj) or obj.status!='DRAFT'): raise PermissionDenied
     form=ExpertRequestForm(request.POST or None,instance=obj,user=request.user)
     if request.method=='POST' and form.is_valid():
         with transaction.atomic():
-            obj=form.save(commit=False); obj.requester=obj.requester if pk else request.user; obj.save(); form.save_m2m()
+            obj=form.save(commit=False); obj.mode=obj.mode or 'BROADCAST'; obj.requester=obj.requester if pk else request.user; obj.save(); form.save_m2m()
             audit(request.user,'REQUEST_UPDATED' if pk else 'REQUEST_CREATED',obj,'Demande enregistrée en brouillon')
         messages.success(request,'Brouillon enregistré. Vous pouvez maintenant soumettre votre demande.')
         return redirect('request_detail',obj.pk)
@@ -257,15 +291,43 @@ def request_detail(request,pk):
         return redirect('request_detail',pk)
     labels=['Demande','Matching','Pré-accord','PO','Mission','PV','Évaluation','Clôture']
     current={'DRAFT':0,'SUBMITTED':1,'WAITING_MATCHING':1,'WAITING_PRE_AGREEMENT':2,'WAITING_PO':3,'IN_PROGRESS':4,'WAITING_EVALUATION':6,'CLOSED':7}.get(obj.status,0)
+    can_respond_broadcast=(role(request.user)=='ADMIN_FILIALE' and obj.mode=='BROADCAST' and obj.status=='WAITING_MATCHING' and obj.subsidiary_id!=subsidiary_id(request.user))
+    responder_experts=Expert.objects.filter(subsidiary_id=subsidiary_id(request.user),is_active=True,validation_status='APPROVED',availability='AVAILABLE').order_by('last_name','first_name') if can_respond_broadcast else Expert.objects.none()
     return render(request,'request_detail.html',{'item':obj,'title':obj.reference,'section':'request_list','steps':[(label,'done' if i<current else 'current' if i==current else '') for i,label in enumerate(labels)],
-      'editable':request_writable(request.user,obj) and obj.status=='DRAFT','events':audit_for(request.user).filter(entity_type='ExpertRequest',entity_id=str(pk)),
-      'solicitations':solicitations_for(request.user).filter(request=obj),'documents':obj.documents.all()})
+      'editable':request_writable(request.user,obj) and obj.status=='DRAFT','can_add_po':request_writable(request.user,obj) and obj.status=='WAITING_PO','events':audit_for(request.user).filter(entity_type='ExpertRequest',entity_id=str(pk)),
+      'solicitations':solicitations_for(request.user).filter(request=obj),'proposals':obj.proposals.select_related('expert__subsidiary','proposed_by'),'can_respond_broadcast':can_respond_broadcast,'responder_experts':responder_experts,'documents':obj.documents.all()})
+
+@login_required
+@require_POST
+def purchase_order_upload(request,pk):
+    obj=get_object_or_404(requests_for(request.user),pk=pk)
+    if not request_writable(request.user,obj): raise PermissionDenied
+    try:
+        mission=register_purchase_order(obj,request.FILES.get('po_file'),request.user)
+        messages.success(request,'Bon de commande ajouté. La mission est désormais planifiée.')
+        return redirect('mission_detail',mission.pk)
+    except ValueError as error:
+        messages.error(request,str(error))
+        return redirect('request_detail',pk)
+
+@login_required
+@require_POST
+def broadcast_proposal_create(request,pk):
+    guard(request.user,['ADMIN_FILIALE'])
+    obj=get_object_or_404(requests_for(request.user),pk=pk)
+    expert=get_object_or_404(Expert.objects.filter(subsidiary_id=subsidiary_id(request.user),is_active=True,validation_status='APPROVED',availability='AVAILABLE'),pk=request.POST.get('expert_id'))
+    try:
+        create_broadcast_proposal(obj,expert,request.user)
+        messages.success(request,f'{expert.full_name} a été proposé à la filiale demandeuse.')
+    except ValueError as error:
+        messages.error(request,str(error))
+    return redirect('request_detail',pk)
 
 @login_required
 def solicitation_list(request):
     qs=solicitations_for(request.user)
     q=request.GET.get('q','')
-    if q: qs=qs.filter(Q(request__title__icontains=q)|Q(expert__last_name__icontains=q)|Q(request__reference__icontains=q))
+    if q: qs=qs.filter(Q(request__title__icontains=q)|Q(expert__last_name__icontains=q)|Q(request__reference__icontains=q)|Q(subject__icontains=q))
     if request.GET.get('status') in dict(ExpertSolicitation.STATUSES): qs=qs.filter(status=request.GET['status'])
     page=Paginator(qs.order_by('-created_at'),12).get_page(request.GET.get('page'))
     page.object_list=[with_deadline(s) for s in page.object_list]
@@ -275,7 +337,7 @@ def solicitation_list(request):
 @login_required
 def solicitation_detail(request,pk):
     s=get_object_or_404(solicitations_for(request.user),pk=pk)
-    can_respond=role(request.user)=='ADMIN_FOURNISSEUR' and s.expert.subsidiary_id==subsidiary_id(request.user) and s.status=='PENDING' and s.deadline>timezone.now()
+    can_respond=role(request.user)=='ADMIN_FILIALE' and s.expert.subsidiary_id==subsidiary_id(request.user) and s.status=='PENDING' and s.deadline>timezone.now()
     if request.method=='POST':
         if not can_respond: raise PermissionDenied
         try:
@@ -288,20 +350,31 @@ def solicitation_detail(request,pk):
 
 @login_required
 def solicitation_create(request,expert_id):
-    guard(request.user,['ADMIN_DEMANDEUR','ADMIN_OMEA'])
-    expert=get_object_or_404(experts_for(request.user,matching=True),pk=expert_id)
+    guard(request.user,['ADMIN_FILIALE','ADMIN_OMEA'])
+    # Une demande ciblée déjà ouverte doit pouvoir être soumise même si la
+    # disponibilité de l'expert a changé entre l'affichage du formulaire et le POST.
+    # Le service applique ensuite la validation métier et renvoie un message utile.
+    expert=get_object_or_404(Expert.objects.select_related('subsidiary').filter(is_active=True,validation_status='APPROVED'),pk=expert_id)
     eligible=requests_for(request.user).filter(status='WAITING_MATCHING')
     if request.method=='POST':
-        obj=get_object_or_404(eligible,pk=request.POST.get('request_id'))
-        with transaction.atomic():
-            expert=Expert.objects.select_for_update().get(pk=expert.pk)
-            s=create_solicitation(obj,expert,request.user)
-        messages.success(request,'Sollicitation créée. Le fournisseur dispose de 48 heures.')
+        try:
+            with transaction.atomic():
+                expert=Expert.objects.select_for_update().get(pk=expert.pk)
+                if request.POST.get('request_id'):
+                    obj=get_object_or_404(eligible,pk=request.POST.get('request_id'))
+                    s=create_solicitation(obj,expert,request.user)
+                    messages.success(request,'Sollicitation créée. Le fournisseur dispose de 48 heures.')
+                else:
+                    s=create_direct_solicitation(expert,request.user,request.POST)
+                    messages.success(request,'Sollicitation directe envoyée. La filiale de l’expert dispose de 48 heures pour répondre.')
+        except ValueError as error:
+            messages.error(request,str(error))
+            return redirect('solicitation_create',expert_id)
         response=redirect('solicitation_detail',s.pk)
         if request.headers.get('HX-Request')=='true':
             response=HttpResponse(); response['HX-Redirect']=redirect('solicitation_detail',s.pk).url
         return response
-    return render(request,'partials/solicitation_form.html' if request.headers.get('HX-Request')=='true' else 'solicitation_create.html',{'expert':expert,'eligible':eligible,'title':'Solliciter un expert','section':'matching'})
+    return render(request,'solicitation_create.html',{'expert':expert,'eligible':eligible,'title':'Créer une demande ciblée','section':'matching'})
 
 @login_required
 def mission_list(request):
@@ -312,7 +385,38 @@ def mission_list(request):
 @login_required
 def mission_detail(request,pk):
     obj=get_object_or_404(missions_for(request.user),pk=pk)
-    return render(request,'mission_detail.html',{'item':obj,'title':obj.request.title,'section':'mission_list','events':audit_for(request.user).filter(entity_type='Mission',entity_id=str(pk))})
+    can_add_pv=role(request.user)=='ADMIN_FILIALE' and obj.supplier_subsidiary_id==subsidiary_id(request.user) and obj.request.status=='IN_PROGRESS' and not obj.pv_document_id
+    can_evaluate=request.user==obj.request.requester and obj.request.status=='WAITING_EVALUATION' and not hasattr(obj,'evaluation')
+    return render(request,'mission_detail.html',{'item':obj,'title':obj.request.title,'section':'mission_list','can_add_pv':can_add_pv,'can_evaluate':can_evaluate,'evaluation_form':EvaluationForm(),'events':audit_for(request.user).filter(entity_type='Mission',entity_id=str(pk))})
+
+@login_required
+@require_POST
+def delivery_report_upload(request,pk):
+    mission=get_object_or_404(missions_for(request.user),pk=pk)
+    if role(request.user)!='ADMIN_FILIALE' or mission.supplier_subsidiary_id!=subsidiary_id(request.user): raise PermissionDenied
+    try:
+        register_delivery_report(mission,request.FILES.get('pv_file'),request.user)
+        messages.success(request,'PV ajouté. La filiale demandeuse peut maintenant évaluer la mission.')
+    except ValueError as error:
+        messages.error(request,str(error))
+    return redirect('mission_detail',pk)
+
+@login_required
+@require_POST
+def mission_evaluate(request,pk):
+    mission=get_object_or_404(missions_for(request.user),pk=pk)
+    if request.user!=mission.request.requester: raise PermissionDenied
+    form=EvaluationForm(request.POST)
+    if form.is_valid():
+        try:
+            evaluation=create_evaluation(mission,request.user,form.cleaned_data['rating'],form.cleaned_data['comment'])
+            messages.success(request,'Évaluation enregistrée. La mission est clôturée.')
+            return redirect('mission_detail',evaluation.mission_id)
+        except ValueError as error:
+            messages.error(request,str(error))
+    else:
+        messages.error(request,'Complétez la note et le commentaire avant de valider.')
+    return redirect('mission_detail',pk)
 
 @login_required
 def notifications(request):
@@ -331,6 +435,25 @@ def mark_notification_read(request,pk):
     n.is_read=True; n.save(update_fields=['is_read'])
     if request.headers.get('HX-Request')=='true':
         response=notifications(request); response['HX-Trigger']='notificationsChanged'; return response
+    return redirect('notifications')
+
+@login_required
+def notification_open(request,pk):
+    """Open a notification only while its target remains in the user's scope."""
+    notification=get_object_or_404(Notification,pk=pk,user=request.user)
+    notification.is_read=True; notification.save(update_fields=['is_read'])
+    try:
+        match=resolve(notification.url)
+        target_pk=match.kwargs.get('pk')
+        visible={
+            'request_detail': requests_for(request.user).filter(pk=target_pk).exists(),
+            'solicitation_detail': solicitations_for(request.user).filter(pk=target_pk).exists(),
+            'mission_detail': missions_for(request.user).filter(pk=target_pk).exists(),
+        }.get(match.url_name,False)
+        if visible: return redirect(notification.url)
+    except (Resolver404, TypeError, ValueError):
+        pass
+    messages.info(request,'Cette notification concerne un élément qui n’est plus disponible dans votre périmètre.')
     return redirect('notifications')
 
 @login_required
