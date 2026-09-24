@@ -7,8 +7,10 @@
 <link rel="stylesheet" href="{% static 'vendor/tabler/tabler-icons.min.css' %}">
 <link rel="stylesheet" href="{% static 'orbit.css' %}?v=3">
 <link rel="stylesheet" href="{% static 'qa-polish.css' %}">
+<link rel="stylesheet" href="{% static 'sidebar-hover.css' %}?v=9">
+{% if section == 'matching' %}<link rel="stylesheet" href="{% static 'matching-workbench.css' %}?v=2">{% endif %}
 <script defer src="{% static 'vendor/htmx/htmx.min.js' %}"></script>
-<script defer src="{% static 'orbit.js' %}?v=4"></script>
+<script defer src="{% static 'orbit.js' %}?v=7"></script>
 </head>
 <body hx-headers='{"X-CSRFToken":"{{ csrf_token }}"}'>
 <a class="skip-link" href="#main">Aller au contenu</a>
@@ -17,7 +19,7 @@
 <div class="workspace">
 <header class="topbar">
 <button class="icon-button mobile-toggle" data-menu aria-label="Ouvrir la navigation" aria-expanded="false" aria-controls="sidebar"><i class="ti ti-menu-2" aria-hidden="true"></i></button>
-<nav class="breadcrumbs" aria-label="Fil d’Ariane"><a href="{% url 'dashboard' %}">Espace de travail</a><i class="ti ti-chevron-right" aria-hidden="true"></i><span>{{ title|default:"Vue d’ensemble" }}</span></nav>
+<nav class="breadcrumbs" aria-label="Fil d’Ariane"><a href="{% url 'dashboard' %}">Espace de travail</a><i class="ti ti-chevron-right" aria-hidden="true"></i><span>{% if section == 'matching' %}Recherche d’experts{% else %}{{ title|default:"Vue d’ensemble" }}{% endif %}</span></nav>
 <a class="top-search" href="{% url 'matching' %}"><i class="ti ti-search" aria-hidden="true"></i><span>Rechercher un expert, une demande...</span></a>
 <div class="top-actions"><span class="today">{% now "j F Y" %}</span>
 <details class="notification-menu"><summary class="icon-button" aria-label="Ouvrir les notifications"><i class="ti ti-bell" aria-hidden="true"></i>{% if unread_count %}<b class="notification-count">{{ unread_count }}</b>{% endif %}</summary>
@@ -32,4 +34,5 @@
 </main>{% if user.is_authenticated %}<footer class="app-footer"><span>ORBIT · Orange Middle East & Africa</span><span>Espace interne · Expertise ICT / MPN</span></footer></div>{% endif %}
 <dialog id="modal" aria-label="Action ORBIT"><button class="icon-button modal-close" data-close aria-label="Fermer"><i class="ti ti-x" aria-hidden="true"></i></button><div id="modal-body"></div></dialog>
 <template id="help-content"><div class="eyebrow">Aide & parcours</div><h2>De la demande à la mission.</h2><p>Créez un brouillon, précisez les compétences puis soumettez votre demande au matching.</p><p>L’administrateur demandeur sélectionne un expert. Le fournisseur dispose de 48 heures pour répondre au pré-accord.</p><p>Retrouvez les réponses dans Sollicitations et les événements dans le Journal d’activité.</p></template>
+{% if section == 'matching' %}<script defer src="{% static 'matching-workbench.js' %}?v=2"></script>{% endif %}
 </body></html>

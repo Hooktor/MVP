@@ -1,8 +1,39 @@
-{% extends 'base.html' %}{% block content %}{% include 'components/page_header.html' with title="Trouvons la bonne expertise." subtitle="Explorez les profils disponibles et validés OMEA, dans l’ensemble du réseau." eyebrow="MATCHING EXPERTS" %}
-<form class="matching-filters" method="get" hx-get="{% url 'matching' %}" hx-target="#results" hx-push-url="true" hx-trigger="submit, change from:select, input changed delay:400ms from:input" hx-sync="this:replace" hx-indicator="#list-loading"><div class="scope-picker"><label for="matching-request">Comparer à une demande</label><select name="request_id" id="matching-request"><option value="">Explorer les profils disponibles</option>{% for r in eligible_requests %}<option value="{{ r.pk }}" {% if selected_request.pk == r.pk %}selected{% endif %}>{{ r.reference }} · {{ r.title }}</option>{% endfor %}</select></div><div class="filterbar"><label class="search-field"><i class="ti ti-search" aria-hidden="true"></i><input name="q" value="{{ request.GET.q }}" placeholder="Une compétence, un domaine, un expert…" aria-label="Rechercher une expertise"></label>{% include 'components/entity_filters.html' %}<button class="button primary">Rechercher</button></div><details class="advanced"><summary><i class="ti ti-adjustments-horizontal" aria-hidden="true"></i>Filtres avancés</summary><div class="form-grid">
-{% for key,label,options in extra_filters %}{% endfor %}
-<label>Cluster<select name="cluster"><option value="">Tous les clusters</option>{% for x in clusters %}<option value="{{ x.pk }}" {% if request.GET.cluster == x.pk|stringformat:"s" %}selected{% endif %}>{{ x.name }}</option>{% endfor %}</select></label>
-<label>Compétence<select name="skill"><option value="">Toutes</option>{% for x in skills %}<option value="{{ x.pk }}" {% if request.GET.skill == x.pk|stringformat:"s" %}selected{% endif %}>{{ x.name }}</option>{% endfor %}</select></label>
-<label>Certification<select name="certification"><option value="">Toutes</option>{% for x in certifications %}<option value="{{ x.pk }}" {% if request.GET.certification == x.pk|stringformat:"s" %}selected{% endif %}>{{ x.name }}</option>{% endfor %}</select></label>
-<label>Langue<select name="language"><option value="">Toutes</option>{% for x in languages %}<option value="{{ x.pk }}" {% if request.GET.language == x.pk|stringformat:"s" %}selected{% endif %}>{{ x.name }}</option>{% endfor %}</select></label><label>TJM maximum<input type="number" name="rate" min="0" value="{{ request.GET.rate }}" placeholder="Sans plafond"></label><label>Note minimale<input type="number" name="score" min="0" max="5" step=".1" value="{{ request.GET.score }}" placeholder="0 à 5"></label></div></details></form>
-{% include 'components/loader.html' %}<div id="results">{% include 'partials/experts_grid.html' %}</div>{% endblock %}
+{% extends 'base.html' %}{% load static %}{% block title %}Recherche d’experts{% endblock %}{% block content %}
+<div class="matching-workbench" data-matching-workbench>
+  <div class="matching-content">
+    {% include 'components/page_header.html' with title="Trouvez et sélectionnez les meilleurs experts" subtitle="Identifiez les profils pertinents, comparez-les et sollicitez directement la filiale concernée." eyebrow="RECHERCHE D’EXPERTS" %}
+    <form class="matching-filters" method="get" action="{% url 'matching' %}" hx-get="{% url 'matching' %}" hx-target="#results" hx-push-url="true" hx-trigger="submit, change from:select, input changed delay:400ms from:input" hx-sync="this:replace" hx-indicator="#list-loading">
+      <section class="matching-context" aria-label="Contexte de recherche">
+        <div class="matching-context-copy"><span class="matching-context-icon"><i class="ti ti-file-search" aria-hidden="true"></i></span><div><label for="matching-request">Comparer les profils à une demande <span>(facultatif)</span></label><p>Choisissez une demande pour afficher les profils les plus pertinents.</p></div></div>
+        <select name="request_id" id="matching-request"><option value="">Recherche libre · tous les profils disponibles</option>{% for r in eligible_requests %}<option value="{{ r.pk }}" {% if selected_request.pk == r.pk %}selected{% endif %}>{{ r.reference }} · {{ r.title }}</option>{% endfor %}</select>
+      </section>
+      <section class="matching-search" aria-label="Rechercher des experts">
+        <label class="search-field"><i class="ti ti-search" aria-hidden="true"></i><input name="q" value="{{ request.GET.q }}" placeholder="Rechercher un expert, un domaine ou une compétence…" aria-label="Rechercher un expert, un domaine ou une compétence"></label>
+        {% include 'components/entity_filters.html' %}
+        <button class="button primary" type="submit"><i class="ti ti-search" aria-hidden="true"></i><span>Rechercher</span></button>
+      </section>
+      <details class="advanced matching-advanced" {% if request.GET.cluster or request.GET.skill or request.GET.certification or request.GET.language or request.GET.rate or request.GET.score %}open{% endif %}>
+        <summary><i class="ti ti-adjustments-horizontal" aria-hidden="true"></i>Plus de filtres</summary>
+        <div class="form-grid">
+          <label>Cluster<select name="cluster"><option value="">Tous les clusters</option>{% for x in clusters %}<option value="{{ x.pk }}" {% if request.GET.cluster == x.pk|stringformat:"s" %}selected{% endif %}>{{ x.name }}</option>{% endfor %}</select></label>
+          <label>Compétence<select name="skill"><option value="">Toutes les compétences</option>{% for x in skills %}<option value="{{ x.pk }}" {% if request.GET.skill == x.pk|stringformat:"s" %}selected{% endif %}>{{ x.name }}</option>{% endfor %}</select></label>
+          <label>Certification<select name="certification"><option value="">Toutes les certifications</option>{% for x in certifications %}<option value="{{ x.pk }}" {% if request.GET.certification == x.pk|stringformat:"s" %}selected{% endif %}>{{ x.name }}</option>{% endfor %}</select></label>
+          <label>Langue<select name="language"><option value="">Toutes les langues</option>{% for x in languages %}<option value="{{ x.pk }}" {% if request.GET.language == x.pk|stringformat:"s" %}selected{% endif %}>{{ x.name }}</option>{% endfor %}</select></label>
+          <label>TJM maximum<input type="number" name="rate" min="0" value="{{ request.GET.rate }}" placeholder="Sans plafond"></label>
+          <label>Note minimale<input type="number" name="score" min="0" max="5" step=".1" value="{{ request.GET.score }}" placeholder="0 à 5"></label>
+        </div>
+      </details>
+    </form>
+    {% include 'components/loader.html' %}
+    <div id="results" aria-live="polite">{% include 'partials/experts_grid.html' %}</div>
+  </div>
+  <aside class="shortlist-panel" aria-labelledby="shortlist-title" data-shortlist-panel>
+    <div class="shortlist-heading"><div><h2 id="shortlist-title">Ma shortlist <span data-shortlist-count>0</span></h2><p>Gardez des profils sous la main pour les comparer.</p></div><button type="button" class="text-button" data-shortlist-clear hidden>Tout effacer</button></div>
+    <div class="shortlist-empty" data-shortlist-empty><i class="ti ti-bookmark" aria-hidden="true"></i><strong>Votre sélection apparaîtra ici</strong><p>Ajoutez des profils depuis les résultats pour les retrouver et comparer leurs critères.</p></div>
+    <ul class="shortlist-items" data-shortlist-items aria-label="Experts présélectionnés"></ul>
+    <button type="button" class="button shortlist-compare" data-shortlist-compare disabled><i class="ti ti-scale" aria-hidden="true"></i>Comparer les profils <span data-compare-count>0</span></button>
+    <p class="shortlist-hint">La sollicitation reste individuelle pour chaque expert.</p>
+  </aside>
+</div>
+<dialog class="compare-dialog" data-compare-dialog aria-labelledby="compare-title"><div class="compare-dialog-header"><div><p class="eyebrow">COMPARAISON</p><h2 id="compare-title">Comparer les profils sélectionnés</h2></div><button type="button" class="icon-button" data-compare-close aria-label="Fermer la comparaison"><i class="ti ti-x" aria-hidden="true"></i></button></div><div class="compare-table-wrap"><table class="compare-table"><thead><tr><th scope="col">Critère</th><th scope="col">Expert</th></tr></thead><tbody data-compare-body></tbody></table></div></dialog>
+{% endblock %}

@@ -114,7 +114,7 @@ def matching(request):
         expert.match_score=round(sum(w for label,w,ok in criteria if ok)/sum(w for label,w,ok in criteria)*100) if criteria else None
         expert.match_reasons=[label for label,w,ok in criteria if ok]
     params=request.GET.copy(); params.pop('page',None)
-    return render(request,'partials/experts_grid.html' if request.headers.get('HX-Request')=='true' else 'matching.html',dict(page=page,selected_request=selected,eligible_requests=eligible,query=params.urlencode(),title='Matching experts',section='matching',**filter_context()))
+    return render(request,'partials/experts_grid.html' if request.headers.get('HX-Request')=='true' else 'matching.html',dict(page=page,selected_request=selected,eligible_requests=eligible,query=params.urlencode(),title='Recherche d’experts',section='matching',**filter_context()))
 
 @login_required
 def expert_detail(request,pk):

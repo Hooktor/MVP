@@ -49,6 +49,14 @@ class EnterpriseInterfaceTests(TestCase):
         self.assertContains(response,'Migration Cloud')
         self.assertNotContains(response,'Secret filiale B')
 
+    def test_matching_workbench_has_search_shortlist_and_comparison(self):
+        self.client.force_login(self.users['ADMIN_DEMANDEUR'])
+        response=self.client.get(reverse('matching'))
+        self.assertContains(response,'Recherche d’experts')
+        self.assertContains(response,'Ma shortlist')
+        self.assertContains(response,'Comparer les profils')
+        self.assertContains(response,'Ajouter Amina Test à ma shortlist')
+
     def test_foreign_requests_and_write_roles(self):
         self.client.force_login(self.users['ADMIN_DEMANDEUR'])
         self.assertEqual(self.client.get(reverse('request_detail',args=[self.hidden.pk])).status_code,404)

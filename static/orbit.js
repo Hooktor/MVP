@@ -1,5 +1,13 @@
 /* Progressive enhancement; all business rules remain server-side. */
 const initializeOrbit = () => {
+ const sidebar=document.querySelector('#sidebar');
+ sidebar?.addEventListener('pointerenter',e=>{if(e.pointerType==='mouse'||e.pointerType==='pen')sidebar.classList.add('hover-active');});
+ sidebar?.addEventListener('pointerleave',e=>{if(e.pointerType==='mouse'||e.pointerType==='pen')sidebar.classList.remove('hover-active');});
+ let keyboardNavigation=false;
+ document.addEventListener('keydown',e=>{if(e.key==='Tab')keyboardNavigation=true;});
+ document.addEventListener('pointerdown',()=>{keyboardNavigation=false;sidebar?.classList.remove('keyboard-active');});
+ sidebar?.addEventListener('focusin',()=>{if(keyboardNavigation)sidebar.classList.add('keyboard-active');});
+ sidebar?.addEventListener('focusout',()=>{requestAnimationFrame(()=>{if(!sidebar.contains(document.activeElement))sidebar.classList.remove('keyboard-active');});});
  const modal=document.querySelector('#modal');
  const show=(html)=>{document.querySelector('#modal-body').innerHTML=html;if(!modal.open)modal.showModal();};
  document.addEventListener('click',e=>{

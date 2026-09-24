@@ -1,0 +1,151 @@
+/* Desktop navigation rail expands on hover/focus; touch layouts keep the existing drawer. */
+@media (min-width: 761px) {
+  .sidebar {
+    width: 72px;
+    padding: 22px 10px 12px;
+    overflow-x: hidden;
+    z-index: 60;
+    transition: width .22s cubic-bezier(.2,.8,.2,1), box-shadow .22s ease;
+    transition-delay: 0s, 0s;
+  }
+
+  .workspace { margin-left: 72px; }
+
+  .brand {
+    align-items: center;
+    padding: 0 0 25px;
+  }
+
+  .brand-word {
+    font-size: 16px;
+    letter-spacing: -1px;
+  }
+
+  .brand-period { font-size: 16px; }
+  .brand > span + span { display: none; }
+
+  .workspace-label {
+    justify-content: center;
+    gap: 0;
+    margin: 0 0 18px;
+    padding: 15px 0;
+  }
+
+  .workspace-label .workspace-copy { display: none; }
+
+  .sidebar .nav-label {
+    height: 0;
+    overflow: hidden;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    opacity: 0;
+    transition: opacity .12s ease;
+  }
+
+  .sidebar nav { margin-top: 8px; }
+
+  .sidebar .nav-link {
+    justify-content: center;
+    gap: 0;
+    padding: 11px 0;
+    transition: background .15s ease;
+  }
+
+  .sidebar .nav-link .nav-text {
+    width: 0;
+    overflow: hidden;
+    opacity: 0;
+    white-space: nowrap;
+    transition: opacity .12s ease;
+  }
+
+  .sidebar .nav-count { display: none; }
+
+  .sidebar .nav-link.active::before { left: -10px; }
+
+  .sidebar .profile {
+    justify-content: center;
+    gap: 0;
+    padding: 15px 0;
+  }
+
+  .sidebar .profile > div { display: none; }
+  .sidebar .logout { font-size: 0; }
+  .sidebar .logout .ti { font-size: 19px; }
+
+  .sidebar:is(:hover, .hover-active, .keyboard-active, .open) {
+    width: 288px;
+    padding: 28px 16px 12px;
+    overflow-x: visible;
+    box-shadow: 12px 0 30px rgba(14, 23, 35, .2);
+    transition-delay: 0s, 0s;
+  }
+
+  .sidebar:not(:hover):not(.hover-active):not(.keyboard-active):not(.open) {
+    transition-delay: 0s, .08s;
+  }
+
+  .sidebar:is(:hover, .hover-active, .keyboard-active, .open) .brand {
+    align-items: flex-start;
+    padding: 0 12px 25px;
+  }
+
+  .sidebar:is(:hover, .hover-active, .keyboard-active, .open) .brand-word { font-size: 30px; }
+  .sidebar:is(:hover, .hover-active, .keyboard-active, .open) .brand-period { font-size: inherit; }
+  .sidebar:is(:hover, .hover-active, .keyboard-active, .open) .brand > span + span { display: block; }
+
+  .sidebar:is(:hover, .hover-active, .keyboard-active, .open) .workspace-label {
+    justify-content: flex-start;
+    gap: 11px;
+    margin: 0 8px 23px;
+    padding: 16px 0;
+  }
+
+  .sidebar:is(:hover, .hover-active, .keyboard-active, .open) .workspace-label .workspace-copy { display: block; }
+
+  .sidebar:is(:hover, .hover-active, .keyboard-active, .open) .nav-label {
+    height: auto;
+    overflow: visible;
+    margin: 0 12px 9px;
+    opacity: 1;
+  }
+
+  .sidebar:is(:hover, .hover-active, .keyboard-active, .open) .nav-divider {
+    margin-top: 23px;
+    padding-top: 17px;
+    border-top: 1px solid #343940;
+  }
+
+  .sidebar:is(:hover, .hover-active, .keyboard-active, .open) nav { margin-top: 0; }
+
+  .sidebar:is(:hover, .hover-active, .keyboard-active, .open) .nav-link {
+    justify-content: flex-start;
+    gap: 12px;
+    padding: 11px 12px;
+  }
+
+  .sidebar:is(:hover, .hover-active, .keyboard-active, .open) .nav-link .nav-text {
+    width: auto;
+    flex-shrink: 0;
+    overflow: visible;
+    opacity: 1;
+    white-space: nowrap;
+  }
+
+  .sidebar:is(:hover, .hover-active, .keyboard-active, .open) .nav-count { display: inline-flex; }
+  .sidebar:is(:hover, .hover-active, .keyboard-active, .open) .nav-link.active::before { left: -16px; }
+
+  .sidebar:is(:hover, .hover-active, .keyboard-active, .open) .profile {
+    justify-content: flex-start;
+    gap: 10px;
+    padding: 17px 8px;
+  }
+
+  .sidebar:is(:hover, .hover-active, .keyboard-active, .open) .profile > div { display: block; }
+  .sidebar:is(:hover, .hover-active, .keyboard-active, .open) .logout { font-size: 12px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar, .sidebar .nav-text, .sidebar > .nav-label { transition: none !important; }
+}

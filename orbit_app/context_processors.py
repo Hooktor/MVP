@@ -5,7 +5,7 @@ def orbit_context(request):
     nav = [
         ('dashboard','layout-dashboard','Tableau de bord'),
         ('request_list','file-description','Demandes'),
-        ('matching','focus-2','Matching'),
+        ('matching','focus-2','Recherche d’experts'),
         ('expert_list','users','Experts'),
         ('solicitation_list','send','Sollicitations'),
         ('mission_list','briefcase','Missions'),
